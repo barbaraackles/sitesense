@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import sitesense  # noqa: E402
+import firerisk  # noqa: E402
 
 app = FastAPI(title="SiteSense")
 app.mount("/samples", StaticFiles(directory=ROOT / "samples"), name="samples")
@@ -47,6 +48,14 @@ async def _to_data_url(image: UploadFile) -> str:
 @app.get("/api/health")
 def health():
     return {"ok": True, "mock": sitesense.is_mock()}
+
+
+@app.get("/api/risk")
+def api_risk(lat: float, lng: float):
+    """Emberline wildfire layer: historical (2015-2025) fire exposure around a point."""
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(422, "lat must be in [-90, 90] and lng in [-180, 180]")
+    return firerisk.risk_at(lat, lng)
 
 
 @app.post("/api/diagnose")
@@ -84,6 +93,13 @@ def _li(items):
     return "".join(f"<li>{html.escape(str(i))}</li>" for i in items or [])
 
 
+def _firesmart_html(fs):
+    if not fs:
+        return ""
+    return (f"<h3>{html.escape(fs.get('title', 'Lease FireSmart'))}</h3>"
+            f"<p>{html.escape(fs.get('summary', ''))}</p><ul>{_li(fs.get('items'))}</ul>")
+
+
 @app.post("/api/work_order.html", response_class=HTMLResponse)
 async def work_order_html(payload: dict):
     """Printable, PDF-ready HTML of a work order (use the browser's Print > Save as PDF)."""
@@ -104,6 +120,7 @@ td{{padding:4px 8px;vertical-align:top}}.sig{{margin-top:40px;display:flex;gap:4
 <h3>Immediate actions</h3><ol>{_li(wo.get('immediate_actions'))}</ol>
 <h3>Recommended next steps</h3><ol>{_li(wo.get('recommended_next_steps'))}</ol>
 <h3>Safety notes</h3><ul>{_li(wo.get('safety_notes'))}</ul>
+{_firesmart_html(wo.get('firesmart'))}
 <p><i>{e(dx.get('regulatory_note', ''))}</i></p>
 <p style="color:#666">AI-assisted draft. Verify on site; this is not a substitute for gas detection, permits or qualified inspection.</p>
 <div class="sig"><div>Inspected by</div><div>Supervisor approval</div></div></body></html>"""
@@ -167,6 +184,16 @@ async def api_drone(images: List[UploadFile] = File(default=[]), notes: str = Fo
     return report
 
 
+def _fire_ctx_text(ctx):
+    if not ctx:
+        return "n/a"
+    r = ctx.get("risk")
+    if not r:
+        return "no AOI location, not applied"
+    return (f"wildfire exposure {r['rating']} (score {r['score']}); "
+            + ("fire season: fuel/ignition findings weighted up" if ctx.get("applied") else "outside fire season: not applied"))
+
+
 @app.post("/api/drone/report.html", response_class=HTMLResponse)
 async def drone_report_html(report: dict):
     e = lambda v: html.escape(str(v if v is not None else ""))
@@ -186,6 +213,7 @@ td,th{{border:1px solid #ccc;padding:6px;vertical-align:top;text-align:left}}.s{
 &nbsp; <b>Overall:</b> <span class="s {e(report.get('overall_severity'))}">{e(report.get('overall_severity'))}</span></p>
 <p><b>Area of interest:</b> {e(aoi.get('id', 'n/a'))} {e(aoi.get('lat', ''))} {e(aoi.get('lon', ''))} {e(aoi.get('description', ''))}</p>
 <p>{e(report.get('summary'))}</p>
+<p><b>Fire season ranking:</b> {e(_fire_ctx_text(report.get('fire_context')))}</p>
 <table><tr><th>#</th><th>Severity</th><th>Image</th><th>Finding / actions</th></tr>{rows}</table>
 <p style="color:#666">AI-assisted draft. Images cannot detect gas. Verify on site. Drone flights must follow
 Transport Canada rules and have the site operator's permission.</p></body></html>"""

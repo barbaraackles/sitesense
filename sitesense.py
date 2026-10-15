@@ -3,9 +3,12 @@ import sys
 import json
 import base64
 import mimetypes
+import re
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
+import firerisk  # noqa: E402  Emberline wildfire layer
 MODEL_API_BASE_URL = os.environ.get("MODEL_API_BASE_URL", "https://api.meta.ai/v1")
 # NOTE: confirm exact model IDs and endpoint shapes on https://dev.meta.ai
 SEG_MODEL = os.environ.get("SITESENSE_SEG_MODEL", "sam-3.1")
@@ -207,6 +210,10 @@ def run_pipeline(image_data_url: str, user_note: str = "", domain: str = "oil & 
     seg_out = seg if isinstance(seg, dict) else {"raw": str(seg)[:500]}
     if origin:  # link the work order back to the satellite AOI / drone image that triggered it
         work_order["origin"] = origin
+    if is_oil_gas(domain):  # Emberline wildfire layer: lease FireSmart checks
+        a = (origin or {}).get("aoi") or {}
+        risk = firerisk.risk_at(a["lat"], a["lon"]) if a.get("lat") is not None and a.get("lon") is not None else None
+        work_order["firesmart"] = firerisk.firesmart_section(risk)
     return {"mock": is_mock(), "domain": domain, "segmentation": seg_out,
             "diagnosis": diagnosis, "work_order": work_order}
 
@@ -239,13 +246,26 @@ def _structured_call(mode: str, image_data_urls, text: str) -> dict:
     return json.loads(response.choices[0].message.content)
 
 
+def _after_year(scene_meta: dict | None):
+    m = re.search(r"_(\d{4})\d{4}_", ((scene_meta or {}).get("scenes") or {}).get("after", ""))
+    return int(m.group(1)) if m else None
+
+
 def analyze_satellite(image_data_urls, notes: str = "", scene_meta: dict | None = None) -> dict:
-    """SATELLITE level: flag areas of interest (AOIs). Mock returns labelled DEMO AOIs."""
+    """SATELLITE level: flag areas of interest (AOIs). Mock returns labelled DEMO AOIs.
+
+    Every AOI is then annotated with the Emberline wildfire layer (firerisk.py): a risk
+    badge, and a 'possible burn scar / fire recovery' label when a vegetation drop sits
+    on or near a known BC Wildfire Service fire.
+    """
     if is_mock():
-        return mock_satellite(notes)
-    text = f"Scene metadata: {json.dumps(scene_meta or {})}\nNotes: {notes}"
-    out = _structured_call("satellite", list(image_data_urls), text)
-    out["demo"] = False
+        out = mock_satellite(notes)
+    else:
+        text = f"Scene metadata: {json.dumps(scene_meta or {})}\nNotes: {notes}"
+        out = _structured_call("satellite", list(image_data_urls), text)
+        out["demo"] = False
+    year = _after_year(scene_meta)
+    out["aois"] = [firerisk.annotate_aoi(a, year) for a in out.get("aois", [])]
     return out
 
 
@@ -257,8 +277,12 @@ def analyze_drone_image(image_data_url: str, filename: str = "", notes: str = ""
     return _structured_call("drone", [image_data_url], text)
 
 
-def drone_survey(images, notes: str = "", aoi: dict | None = None) -> dict:
-    """DRONE level: analyse a batch [(filename, data_url), ...], rank worst-first, combine."""
+def drone_survey(images, notes: str = "", aoi: dict | None = None, today=None) -> dict:
+    """DRONE level: analyse a batch [(filename, data_url), ...], rank worst-first, combine.
+
+    In fire season (Apr-Oct) the AOI's historical wildfire exposure adds a small bonus to
+    fuel/ignition-related findings (see firerisk.drone_fire_bonus); severity still dominates.
+    """
     findings = []
     for name, url in images:
         try:
@@ -268,13 +292,22 @@ def drone_survey(images, notes: str = "", aoi: dict | None = None) -> dict:
                  "confidence": 0.0, "error": True}
         f["image"] = name
         findings.append(f)
-    findings.sort(key=lambda f: (SEVERITY_RANK.get(f.get("severity"), 0), f.get("confidence", 0)), reverse=True)
+    risk = None
+    if aoi and aoi.get("lat") is not None and aoi.get("lon") is not None:
+        risk = firerisk.risk_at(aoi["lat"], aoi["lon"])
+    season = firerisk.in_fire_season(today)
+    for f in findings:
+        f["fire_bonus"] = firerisk.drone_fire_bonus(f, risk, today)
+        f["priority_score"] = SEVERITY_RANK.get(f.get("severity"), 0) + f["fire_bonus"]
+    findings.sort(key=lambda f: (f["priority_score"], f.get("confidence", 0)), reverse=True)
     for i, f in enumerate(findings, 1):
         f["rank"] = i
     counts = {s: sum(f.get("severity") == s for f in findings) for s in SEVERITY_RANK}
     worst = findings[0]["severity"] if findings else "Low"
     return {
         "mock": is_mock(), "aoi": aoi, "image_count": len(findings), "overall_severity": worst,
+        "fire_context": {"fire_season": season, "risk": firerisk.compact(risk) if risk else None,
+                         "applied": season and risk is not None},
         "severity_counts": counts, "findings": findings,
         "ground_followups": [{"image": f["image"], "request": f.get("ground_photo_request", "")}
                              for f in findings if f.get("needs_ground_closeup")],
