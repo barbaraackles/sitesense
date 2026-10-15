@@ -27,6 +27,8 @@ button.sec{background:transparent;color:var(--hv);border:2px solid var(--hv);fon
 button.mini{width:auto;padding:6px 10px;font-size:11px}
 button:disabled{opacity:.5}
 .badge{display:inline-block;padding:5px 12px;border-radius:6px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;font-size:13px}
+.fr{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:2px 7px;border:1px solid #c24b32;color:#ff8a65;margin-left:4px}
+.fr.high,.fr.very-high,.fr.extreme{background:#c24b32;color:#fff}.burn{color:#ffb74d;font-weight:700;font-size:13px}
 .Low{background:#2e7d32}.Medium{background:#f9a825;color:#111}.High{background:#ff6a00;color:#111}.Critical{background:#d50000;animation:pulse 1.2s infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(213,0,0,.25)}}
 h2{font-size:13px;color:var(--hv);text-transform:uppercase;letter-spacing:.1em;margin:16px 0 6px}
@@ -135,6 +137,7 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:20px}
       <div><b id="woTitle"></b> <span id="woPri" class="badge" style="font-size:11px;padding:2px 8px"></span></div>
       <div id="woOrigin" class="meta" style="margin-top:4px"></div>
       <p id="woDesc" class="meta"></p><ul id="woNext"></ul>
+      <div id="woFire" class="hidden"><h2 style="margin-top:10px">🔥 Lease FireSmart</h2><p id="woFireSum" class="meta"></p><ul id="woFireList"></ul></div>
     </div>
     <div class="row" style="margin-top:12px">
       <button class="sec" type="button" id="dlJson">Download work order (JSON)</button>
@@ -159,14 +162,17 @@ fetch('/api/health').then(r=>r.json()).then(h=>{if(h.mock)$('mockBanner').classL
 /* ---- satellite ---- */
 function originText(){const p=[];if(state.aoi)p.push(`<b>${esc(state.aoi.id)}</b> satellite ${esc(state.aoi.lat)}, ${esc(state.aoi.lon)}: ${esc(state.aoi.type.replace(/_/g,' '))}`);
   if(state.droneFinding)p.push(`<b>Drone #${state.droneFinding.rank}</b> ${esc(state.droneFinding.image)} (${esc(state.droneFinding.severity)})`);return p.join(' → ')}
+function fireBadge(r){return r?`<span class="fr ${esc(r.rating)}" title="Emberline wildfire layer, BC Wildfire Service 2015-2025">Wildfire ${esc(r.rating)} · ${esc(Math.round(r.score))}</span>`:''}
+function fireLine(r){if(!r)return'';const g=r.rings,n=r.nearest_big_fire;return ` · fires 10/25/50 km: ${g['10km'].fires}/${g['25km'].fires}/${g['50km'].fires}`+(n?` · nearest ≥1,000 ha: ${esc(n.name)} ${n.year}, ${n.km} km`:'')}
 async function loadSat(){const r=await fetch('/api/satellite/demo');const s=await r.json();state.sat=s;
   $('satImg').src=s.images.truecolor_after;$('satSummary').textContent=s.summary;$('satDemo').classList.toggle('hidden',!s.demo);list('satLim',s.limitations);
   const W=s.scene.size_px[0],H=s.scene.size_px[1];
   s.aois.forEach(a=>{const p=document.createElement('div');p.className='pin'+(a.type==='seasonal_false_positive'?' fp':'');p.textContent=a.id.replace('AOI-','');
     p.style.left=(a.pixel_xy[0]/W*100)+'%';p.style.top=(a.pixel_xy[1]/H*100)+'%';p.title=a.description;$('map').appendChild(p)});
   $('aoiList').innerHTML=s.aois.map((a,i)=>`<div class="item"><span class="rank">${esc(a.id.replace('AOI-',''))}</span><div class="grow">
-    <span class="badge ${esc(a.priority)}" style="font-size:10px;padding:2px 8px">${esc(a.priority)}</span> <b>${esc(a.type.replace(/_/g,' '))}</b>
-    <div class="meta">${esc(a.lat)}, ${esc(a.lon)}</div><div style="font-size:14px">${esc(a.description)}</div></div>
+    <span class="badge ${esc(a.priority)}" style="font-size:10px;padding:2px 8px">${esc(a.priority)}</span> <b>${esc(a.interpretation||a.type.replace(/_/g,' '))}</b>${fireBadge(a.fire_risk)}
+    <div class="meta">${esc(a.lat)}, ${esc(a.lon)}${fireLine(a.fire_risk)}</div>
+    ${a.burn_scar?`<div class="burn">🔥 ${esc(a.burn_scar.year)} ${esc(a.burn_scar.name)} fire (${Math.round(a.burn_scar.ha).toLocaleString()} ha): likely burn recovery, not a spill</div>`:''}<div style="font-size:14px">${esc(a.description)}</div></div>
     ${a.next_level==='none'?'<span class="meta">no action</span>':`<button class="mini" data-esc="${i}">Escalate → Drone</button>`}</div>`).join('');
   document.querySelectorAll('[data-esc]').forEach(b=>b.onclick=()=>{state.aoi=s.aois[+b.dataset.esc];state.droneFinding=null;
     $('droneLink').innerHTML='Surveying '+originText();$('droneLink').classList.remove('hidden');tab('drone')});
@@ -184,10 +190,10 @@ async function runDrone(useSamples){const fd=new FormData();fd.append('notes',$(
 function renderDrone(s,files){state.survey=s;$('droneOut').classList.remove('hidden');
   $('droneSev').textContent='Worst: '+s.overall_severity;$('droneSev').className='badge '+s.overall_severity;
   $('droneCounts').textContent=Object.entries(s.severity_counts).filter(e=>e[1]).map(e=>e[1]+' '+e[0]).join(' · ');
-  $('droneSummary').textContent=s.summary;
+  const fc=s.fire_context||{};$('droneSummary').innerHTML=esc(s.summary)+(fc.risk?`<div class="meta" style="margin-top:6px">${fireBadge(fc.risk)} ${fc.applied?'Fire season: fuel / ignition findings ranked up.':'Outside fire season: ranking by severity only.'}</div>`:'');
   $('droneList').innerHTML=s.findings.map((f,i)=>{let src=f.image_url||'';if(!src&&files){const m=files.find(x=>x.name===f.image);if(m)src=URL.createObjectURL(m)}
     return `<div class="item"><span class="rank">${f.rank}</span>${src?`<img src="${esc(src)}" alt="">`:''}<div class="grow">
-    <span class="badge ${esc(f.severity)}" style="font-size:10px;padding:2px 8px">${esc(f.severity)}</span> <span class="meta">${esc(f.image)}</span>
+    <span class="badge ${esc(f.severity)}" style="font-size:10px;padding:2px 8px">${esc(f.severity)}</span> <span class="meta">${esc(f.image)}</span>${f.fire_bonus?`<span class="fr high">+fire ${f.fire_bonus}</span>`:''}
     <div style="font-size:14px;margin-top:4px">${esc(f.issue_summary)}</div>
     ${f.needs_ground_closeup?`<div class="meta">📷 ${esc(f.ground_photo_request)}</div>`:''}</div>
     <button class="mini" data-g="${i}">Escalate → Ground</button></div>`}).join('');
@@ -219,6 +225,7 @@ function render(r){
   $('woTitle').textContent=w.title;$('woPri').textContent=w.priority;$('woPri').className='badge '+w.priority;
   $('woOrigin').innerHTML=w.origin?'Origin: '+originText()+' → Ground':'Origin: direct ground inspection';
   $('woDesc').textContent=w.description;list('woNext',w.recommended_next_steps);
+  const fs=w.firesmart;$('woFire').classList.toggle('hidden',!fs);if(fs){$('woFireSum').textContent=fs.summary;list('woFireList',fs.items)}
   $('reg').textContent=d.regulatory_note||'';
   $('out').scrollIntoView({behavior:'smooth'});
 }
