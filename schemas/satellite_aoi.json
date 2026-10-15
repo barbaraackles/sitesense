@@ -1,0 +1,95 @@
+{
+  "name": "sitesense_satellite_screening",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "summary",
+      "aois",
+      "limitations"
+    ],
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "aois": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "pixel_xy",
+            "lon",
+            "lat",
+            "type",
+            "priority",
+            "description",
+            "next_level"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "pixel_xy": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "lon": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "lat": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "lease_change",
+                "vegetation_stress",
+                "possible_staining",
+                "erosion",
+                "new_disturbance",
+                "seasonal_false_positive",
+                "other"
+              ]
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "Low",
+                "Medium",
+                "High"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "next_level": {
+              "type": "string",
+              "enum": [
+                "drone",
+                "ground",
+                "none"
+              ]
+            }
+          }
+        }
+      },
+      "limitations": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
