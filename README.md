@@ -99,6 +99,33 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
+## Emberline wildfire layer
+
+SiteSense borrows the data and the per-town risk logic of **Emberline** (a BC wildfire hotspot and FireSmart planner) so every lease, AOI and work order knows its wildfire history. This matters in the Peace Region because the biggest BC fires of the decade burned through oil and gas country: Donnie Creek (2023, ~619,000 ha) and Nogah Creek (2024, ~508,000 ha).
+
+- **Data:** `data/bc_fires.geojson` (~1 MB) holds 4,535 BC fire origin points (≥ 1 ha) and 558 ignition hotspot cells, covering 2015–2025. The source is BC Wildfire Service *Historical Fire Incident Locations*, under the Open Government Licence – BC (credit in `samples/CREDITS.md`). To regenerate it, run `python tools/export_emberline.py <emberline>/src/data/catalog.json`.
+- **Risk module and API:** `firerisk.py` and `GET /api/risk?lat=55.76&lng=-120.24` return:
+  - fires and hectares within 10/25/50 km
+  - the human/lightning/unknown cause mix within 25 km
+  - the nearest fire of 1,000 ha or more, and the largest fire within 50 km
+  - a 0–100 score and a rating band (watch, moderate, high, very-high, extreme)
+
+  The weights were calibrated on Emberline's 63 town scores: 45 of 63 ratings match exactly and all 63 are within one band. It shows **historical exposure, not a forecast**, so always check the current BC Wildfire Service fire danger, bans and evacuation orders.
+- **Satellite:** each AOI gets a wildfire-risk badge. If a vegetation-drop AOI (vegetation stress, possible staining, new disturbance) sits inside or near a known fire's footprint, it is relabelled **"possible burn scar / fire recovery"** instead of a possible spill. Only fires up to the "after" image's year count. The footprint is approximated as a circle with the fire's area plus a 3 km margin, because the data has origin points, not perimeters. The bundled demo clip has no recorded fire under it, so its AOIs are not relabelled.
+- **Drone ranking (fire season, April–October):** when the survey's AOI has a location, findings that add fuel or an ignition source get a small bonus. These are leaks/stains, containment breaches, hot work, ignition sources, or a flare, vegetation, grass, slash or debris in the description. The bonus is +0.5 when exposure is high or worse, +0.25 when moderate, and 0 otherwise. It is smaller than one severity step, so a Critical finding is never outranked by a High one. The bonus is shown per finding (`fire_bonus`) and in `fire_context`, and it is off outside fire season.
+- **Work orders:** oil and gas work orders get a **Lease FireSmart** section, shown in the UI and the printable HTML. It covers:
+  - vegetation clearance around the wellhead and flare
+  - flare and hot-work checks
+  - pipeline right-of-way firebreaks
+  - overwintering (holdover) fires
+  - the evacuation and H2S muster and second egress
+
+  The checks are generic and defer to the operator's procedures and the rules that apply; they cite no regulation numbers.
+
+| AOI wildfire badges | Fire-season drone ranking | Lease FireSmart in the work order |
+|---|---|---|
+| ![AOI badges](docs/screenshot_4_wildfire_aoi_badges.png) | ![Drone ranking](docs/screenshot_5_wildfire_drone_ranking.png) | ![FireSmart](docs/screenshot_6_wildfire_firesmart.png) |
+
 ## Demo flow
 1. SAM 3.1 segments the object of interest
 2. Muse Spark returns a structured JSON diagnosis (oil & gas prompt + schema when that domain is selected)
