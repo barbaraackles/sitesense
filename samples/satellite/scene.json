@@ -1,0 +1,28 @@
+{
+  "center_lonlat": [
+    -120.45,
+    55.95
+  ],
+  "bbox_utm10n": [
+    655223.6037984368,
+    6199451.2475069435,
+    663223.6037984368,
+    6207451.2475069435
+  ],
+  "bbox_lonlat": [
+    -120.51629164502036,
+    55.915401909289976,
+    -120.38359016478343,
+    55.984561052014364
+  ],
+  "scenes": {
+    "before": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/10/V/FH/2018/8/S2A_10VFH_20180802_0_L2A",
+    "after": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/10/V/FH/2021/9/S2A_10VFH_20210902_0_L2A"
+  },
+  "pixel_m": 10,
+  "size_px": [
+    800,
+    800
+  ],
+  "ndvi_drop_fraction": 0.2553390625
+}

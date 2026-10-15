@@ -1,0 +1,55 @@
+{
+  "demo": true,
+  "disclaimer": "DEMO EXAMPLES ONLY. Hand-placed on visible features to illustrate the workflow; these are NOT detected leaks or confirmed problems.",
+  "scene": "samples/satellite/scene.json",
+  "aois": [
+    {
+      "id": "AOI-1",
+      "pixel_xy": [
+        191,
+        225
+      ],
+      "lon": -120.48234,
+      "lat": 55.96635,
+      "type": "lease_change",
+      "priority": "Medium",
+      "description": "Bright cleared pad (likely wellsite/lease) with adjacent darker patch"
+    },
+    {
+      "id": "AOI-2",
+      "pixel_xy": [
+        391,
+        409
+      ],
+      "lon": -120.45142,
+      "lat": 55.94918,
+      "type": "vegetation_stress",
+      "priority": "High",
+      "description": "Cleared pad near a linear corridor; example of where to check pad-edge vegetation for stress"
+    },
+    {
+      "id": "AOI-3",
+      "pixel_xy": [
+        749,
+        209
+      ],
+      "lon": -120.39294,
+      "lat": 55.96593,
+      "type": "new_disturbance",
+      "priority": "Low",
+      "description": "Small bright clearing; possible new disturbance since 2018"
+    },
+    {
+      "id": "AOI-4",
+      "pixel_xy": [
+        700,
+        560
+      ],
+      "lon": -120.40289,
+      "lat": 55.93459,
+      "type": "seasonal_false_positive",
+      "priority": "Low",
+      "description": "Large NDVI drop over a rectangular field: almost certainly harvest/season, a FALSE POSITIVE example"
+    }
+  ]
+}
