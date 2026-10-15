@@ -36,3 +36,9 @@ These are openly licensed **aerial** photos from Wikimedia Commons, mostly taken
 | `oil_well_site_yawthorpe.jpg` | Oil well site at Yawthorpe (UK), aerial 2022 | https://commons.wikimedia.org/wiki/File:Oil_well_at_Yawthorpe,_aerial_2022_-_geograph.org.uk_-_7162660.jpg | [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0) | Simon Tomson |
 
 Not used: pumpjack and tank-battery aerials, because no clearly licensed relevant image came up. Unsplash and Pexels were not used, because their custom licenses can't be checked as reliably as CC files.
+
+## Wildfire layer (data/bc_fires.geojson)
+
+| File | Content | Source | License |
+|---|---|---|---|
+| `data/bc_fires.geojson` | 4,535 fire origin points (≥ 1 ha) and 558 ignition hotspot cells (~0.1° grid, all recorded starts), BC, 2015–2025, retrieved 2026-09-06. Exported from the Emberline catalog with `tools/export_emberline.py`. | BC Wildfire Service, Historical Fire Incident Locations: https://catalogue.data.gov.bc.ca/dataset/bc-wildfire-fire-incident-locations-historical | Contains information licensed under the [Open Government Licence – British Columbia](https://www2.gov.bc.ca/gov/content/data/open-data/open-government-licence-bc) |
