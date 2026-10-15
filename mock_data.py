@@ -203,3 +203,105 @@ def mock_work_order(diagnosis: dict) -> dict:
         "recommended_next_steps": list(diagnosis.get("recommended_next_steps", [])),
         "safety_notes": list(diagnosis.get("safety_notes", [])),
     }
+
+
+# ---------------------------------------------------------------------------
+# Satellite + drone mock data
+# ---------------------------------------------------------------------------
+import json as _json
+from pathlib import Path as _Path
+
+_ROOT = _Path(__file__).resolve().parent
+SEVERITY_RANK = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+
+
+def mock_satellite(notes: str = "") -> dict:
+    """Demo AOIs hand-placed on the bundled Sentinel-2 clip. NOT detected leaks."""
+    p = _ROOT / "samples" / "satellite" / "demo_aoi.json"
+    demo = _json.loads(p.read_text()) if p.is_file() else {"aois": []}
+    aois = []
+    for a in demo.get("aois", []):
+        a = dict(a)
+        a["description"] = "DEMO EXAMPLE: " + a["description"]
+        a["next_level"] = "none" if a["type"] == "seasonal_false_positive" else "drone"
+        aois.append(a)
+    return {
+        "demo": True,
+        "summary": ("DEMO OUTPUT. Example areas of interest placed by hand on visible features of a real "
+                    "Sentinel-2 clip near Dawson Creek/Fort St. John. They illustrate the workflow and are "
+                    "NOT detected leaks or confirmed problems."),
+        "aois": aois,
+        "limitations": [
+            "~10 m pixels: valves, gauges, signage and small stains are not visible",
+            "Most NDVI drop in this pair is harvest/seasonal change (Aug 2018 vs Sep 2021)",
+            "Satellite imagery cannot detect gas, H2S or methane",
+        ],
+    }
+
+
+_DRONE_BASE = {"gauge_reading": "not resolvable from the air", "regulatory_note": REG_NOTE,
+               "additional_issues": [], "requires_gas_detection": True}
+
+DRONE_SCENARIOS = {
+    "leak": dict(_DRONE_BASE, **{
+        "issue_summary": "Well pad with visible disturbance and dark ground patches consistent with an active incident response.",
+        "severity": "Critical", "confidence": 0.66, "asset_type": "lease_pad",
+        "observed_conditions": ["Dark, irregular patches on the pad surface", "Equipment and response activity on site",
+                                "Vegetation discolouration downslope of the pad"],
+        "likely_causes": ["Loss of containment at the wellhead or connected equipment"],
+        "immediate_actions": ["Do not approach without the site's emergency/H2S procedures and gas monitoring",
+                              "Notify the operator's control room or emergency line"],
+        "recommended_next_steps": ["Ground close-up of the wellhead and the downslope edge", "Delineate the affected area"],
+        "safety_notes": ["An image cannot detect gas; confirm with calibrated detection", "Stay upwind"],
+        "work_order_draft": "Respond to suspected release at the well pad; ground inspection; contain and report.",
+        "hazard_flags": ["leak_or_stain", "containment_breach"],
+        "needs_ground_closeup": True,
+        "ground_photo_request": "Close-up of the wellhead base and the darkest downslope patch, with a scale reference"}),
+    "row": dict(_DRONE_BASE, **{
+        "issue_summary": "Pipeline right-of-way in good overall condition; check one crossing area for erosion/encroachment.",
+        "severity": "Medium", "confidence": 0.58, "asset_type": "right_of_way",
+        "observed_conditions": ["Cleared corridor with intersecting cutlines/roads", "Snow cover limits ground visibility",
+                                "No exposed pipe visible at this altitude"],
+        "likely_causes": ["Vehicle crossings and freeze-thaw may cause rutting or erosion at intersections"],
+        "immediate_actions": ["Log the crossing location for follow-up"],
+        "recommended_next_steps": ["Ground check at the intersection after snowmelt", "Confirm the crossing is authorized"],
+        "safety_notes": ["Call before you dig; never excavate near a pipeline without a locate",
+                         "An image cannot detect gas"],
+        "work_order_draft": "RoW patrol follow-up: inspect the crossing for erosion, depth of cover and authorization.",
+        "hazard_flags": ["other"], "requires_gas_detection": False,
+        "needs_ground_closeup": True,
+        "ground_photo_request": "Ground photos of the crossing from both sides, with any markers visible"}),
+    "construction": dict(_DRONE_BASE, **{
+        "issue_summary": "Active well pad construction: lease footprint change explains the satellite flag.",
+        "severity": "Low", "confidence": 0.7, "asset_type": "lease_pad",
+        "observed_conditions": ["Fresh earthworks and cleared pad", "Rig/construction equipment staged", "Snow-covered access"],
+        "likely_causes": ["Planned development (consistent with a 'new disturbance' AOI)"],
+        "immediate_actions": ["Confirm with the operator that the activity is planned"],
+        "recommended_next_steps": ["Close the AOI as explained if confirmed", "Re-check erosion and sediment controls after thaw"],
+        "safety_notes": ["Active construction: stay clear of equipment; site orientation required"],
+        "work_order_draft": "Verify planned construction at the flagged lease; close the AOI if confirmed.",
+        "hazard_flags": ["other"], "requires_gas_detection": False,
+        "needs_ground_closeup": False, "ground_photo_request": ""}),
+    "pad": dict(_DRONE_BASE, **{
+        "issue_summary": "Operating well pad with tanks and facilities; containment looks intact from the air, minor housekeeping.",
+        "severity": "Low", "confidence": 0.6, "asset_type": "lease_pad",
+        "observed_conditions": ["Facilities and piping visible", "Containment berm outline visible", "No obvious staining at this resolution"],
+        "likely_causes": ["Normal operating condition"],
+        "immediate_actions": ["None urgent"],
+        "recommended_next_steps": ["Routine ground inspection of the tank containment and wellheads"],
+        "safety_notes": ["An image cannot detect gas; follow site entry and gas monitoring procedures"],
+        "work_order_draft": "Routine lease inspection; verify containment and housekeeping.",
+        "hazard_flags": [], "requires_gas_detection": True,
+        "needs_ground_closeup": False, "ground_photo_request": ""}),
+}
+_DRONE_KEYS = [("leak", ("leak", "aliso", "stain", "spill")), ("row", ("row", "right", "pipeline", "corridor")),
+               ("construction", ("construct", "build", "new")), ("pad", ("pad", "sagd", "well", "tank"))]
+
+
+def mock_drone_finding(image_data_url: str, filename: str = "", notes: str = "") -> dict:
+    h = (filename or "").lower()
+    for key, words in _DRONE_KEYS:
+        if any(w in h for w in words):
+            return copy.deepcopy(DRONE_SCENARIOS[key])
+    digest = hashlib.sha256((image_data_url or "").encode()).digest()
+    return copy.deepcopy(list(DRONE_SCENARIOS.values())[digest[0] % len(DRONE_SCENARIOS)])

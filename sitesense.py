@@ -196,7 +196,7 @@ def create_work_order(diagnosis: dict) -> dict:
     return json.loads(tool_call.function.arguments)
 
 def run_pipeline(image_data_url: str, user_note: str = "", domain: str = "oil & gas",
-                 seg_prompt: str = "equipment", hint: str = "") -> dict:
+                 seg_prompt: str = "equipment", hint: str = "", origin: dict | None = None) -> dict:
     """Full flow used by the web app: segment -> diagnose -> work order."""
     seg = segment_image(image_data_url, prompt=seg_prompt)
     if is_mock():  # hint (e.g. upload filename) helps pick a matching canned scenario
@@ -205,13 +205,101 @@ def run_pipeline(image_data_url: str, user_note: str = "", domain: str = "oil & 
         diagnosis = diagnose(image_data_url, user_note=user_note, domain=domain)
     work_order = create_work_order(diagnosis)
     seg_out = seg if isinstance(seg, dict) else {"raw": str(seg)[:500]}
+    if origin:  # link the work order back to the satellite AOI / drone image that triggered it
+        work_order["origin"] = origin
     return {"mock": is_mock(), "domain": domain, "segmentation": seg_out,
             "diagnosis": diagnosis, "work_order": work_order}
 
 
-from mock_data import mock_segment, mock_diagnose, mock_work_order  # noqa: E402
+# ---------------------------------------------------------------------------
+# Three-level inspection: SATELLITE -> DRONE -> GROUND
+# ---------------------------------------------------------------------------
+MODES = {
+    "satellite": ("prompts/satellite_system.txt", "schemas/satellite_aoi.json"),
+    "drone": ("prompts/drone_system.txt", "schemas/drone_finding.json"),
+    "ground": ("prompts/oil_gas_system.txt", "schemas/oil_gas_diagnosis.json"),
+}
+
+
+def mode_prompt_and_schema(mode: str):
+    p, s = MODES[mode]
+    return _load_text(p, DIAGNOSIS_SYSTEM), _load_json(s, DIAGNOSIS_SCHEMA)
+
+
+def _structured_call(mode: str, image_data_urls, text: str) -> dict:
+    """One Muse Spark call with the mode's prompt + JSON schema (real mode only)."""
+    system_prompt, schema = mode_prompt_and_schema(mode)
+    content = [{"type": "text", "text": text}]
+    content += [{"type": "image_url", "image_url": {"url": u}} for u in image_data_urls]
+    response = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": content}],
+        response_format={"type": "json_schema", "json_schema": schema},
+    )
+    return json.loads(response.choices[0].message.content)
+
+
+def analyze_satellite(image_data_urls, notes: str = "", scene_meta: dict | None = None) -> dict:
+    """SATELLITE level: flag areas of interest (AOIs). Mock returns labelled DEMO AOIs."""
+    if is_mock():
+        return mock_satellite(notes)
+    text = f"Scene metadata: {json.dumps(scene_meta or {})}\nNotes: {notes}"
+    out = _structured_call("satellite", list(image_data_urls), text)
+    out["demo"] = False
+    return out
+
+
+def analyze_drone_image(image_data_url: str, filename: str = "", notes: str = "",
+                        aoi: dict | None = None) -> dict:
+    if is_mock():
+        return mock_drone_finding(image_data_url, filename, notes)
+    text = f"Image: {filename}\nTriggering AOI: {json.dumps(aoi or {})}\nNotes: {notes}"
+    return _structured_call("drone", [image_data_url], text)
+
+
+def drone_survey(images, notes: str = "", aoi: dict | None = None) -> dict:
+    """DRONE level: analyse a batch [(filename, data_url), ...], rank worst-first, combine."""
+    findings = []
+    for name, url in images:
+        try:
+            f = analyze_drone_image(url, name, notes, aoi)
+        except Exception as exc:  # one bad image shouldn't kill the survey
+            f = {"issue_summary": f"Analysis failed: {type(exc).__name__}: {exc}", "severity": "Low",
+                 "confidence": 0.0, "error": True}
+        f["image"] = name
+        findings.append(f)
+    findings.sort(key=lambda f: (SEVERITY_RANK.get(f.get("severity"), 0), f.get("confidence", 0)), reverse=True)
+    for i, f in enumerate(findings, 1):
+        f["rank"] = i
+    counts = {s: sum(f.get("severity") == s for f in findings) for s in SEVERITY_RANK}
+    worst = findings[0]["severity"] if findings else "Low"
+    return {
+        "mock": is_mock(), "aoi": aoi, "image_count": len(findings), "overall_severity": worst,
+        "severity_counts": counts, "findings": findings,
+        "ground_followups": [{"image": f["image"], "request": f.get("ground_photo_request", "")}
+                             for f in findings if f.get("needs_ground_closeup")],
+        "summary": (f"{len(findings)} aerial images reviewed; worst finding {worst}. "
+                    f"{sum(bool(f.get('needs_ground_closeup')) for f in findings)} need a ground close-up. "
+                    "Images cannot detect gas: confirm on site with calibrated detection."),
+    }
+
+
+def load_image_dir(folder) -> list:
+    exts = {".jpg", ".jpeg", ".png", ".webp"}
+    return [(p.name, image_to_data_url(str(p))) for p in sorted(Path(folder).iterdir())
+            if p.suffix.lower() in exts]
+
+
+from mock_data import (mock_segment, mock_diagnose, mock_work_order,  # noqa: E402
+                       mock_satellite, mock_drone_finding, SEVERITY_RANK)
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--drone":
+        print(json.dumps(drone_survey(load_image_dir(sys.argv[2])), indent=2))
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "--satellite":
+        print(json.dumps(analyze_satellite([]), indent=2))
+        sys.exit(0)
     IMAGE_PATH = "sample_pipe.jpg"  # ← change this
     if len(sys.argv) > 1:
         IMAGE_PATH = sys.argv[1]
