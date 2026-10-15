@@ -1,5 +1,30 @@
 # SiteSense
 
+<p align="center"><img src="docs/hero.png" alt="SiteSense satellite screening tab near Dawson Creek, BC" width="360"></p>
+
+**SiteSense is a multimodal field assistant for oil and gas wellsite and pipeline inspection in BC's Peace Region, built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).** It works top-down: free Sentinel-2 satellite imagery flags areas of interest, a drone survey ranks the photos worst-first, and a phone close-up goes through **SAM 3.1** segmentation and **Muse Spark 1.3** diagnosis to produce a severity-rated, tool-called work order that links back to its origin. Every work order is safety-first: images never "detect gas", H2S cues are flagged, and a wildfire layer built from a decade of BC Wildfire Service data adds fire risk and Lease FireSmart checks.
+
+**Built by** Barbara Ackles (Dawson Creek, BC), who also built [Emberline](https://github.com/barbaraackles/emberline), the BC wildfire hotspot and FireSmart planner that SiteSense's [wildfire layer](#emberline-wildfire-layer) comes from.
+
+| 1 · Satellite | 2 · Drone | 3 · Ground |
+|---|---|---|
+| <img src="docs/screenshot_1_satellite.png" alt="Satellite tab" width="200"> | <img src="docs/screenshot_2_drone.png" alt="Drone survey" width="200"> | <img src="docs/screenshot_3_ground.png" alt="Ground diagnosis and work order" width="200"> |
+| **4 · AOI wildfire badges** | **5 · Fire-season drone ranking** | **6 · Lease FireSmart** |
+| <img src="docs/screenshot_4_wildfire_aoi_badges.png" alt="AOI wildfire badges" width="200"> | <img src="docs/screenshot_5_wildfire_drone_ranking.png" alt="Drone ranking" width="200"> | <img src="docs/screenshot_6_wildfire_firesmart.png" alt="Lease FireSmart" width="200"> |
+
+## Try it in 60 seconds (mock mode)
+No API key needed. Mock mode returns realistic canned responses, so the whole Satellite → Drone → Ground flow runs end to end.
+```bash
+git clone https://github.com/barbaraackles/sitesense && cd sitesense
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+SITESENSE_MOCK=1 uvicorn app.main:app --port 8000
+# open http://localhost:8000 → Satellite: "Escalate → Drone" → "Use sample set" → "Escalate → Ground" → pick a sample → Inspect
+# wildfire API: curl "http://localhost:8000/api/risk?lat=55.76&lng=-120.24"
+```
+Run the tests with `pip install -r requirements-dev.txt && pytest`. For real mode, set `MODEL_API_KEY` (see [Quick start](#quick-start)).
+
+## Overview
 Multimodal agentic field assistant for the **Meta Global AI Developer Hackathon** (Oct 26–Nov 4, 2026).
 
 **Focus: oil & gas wellsite and pipeline inspection in the Peace Region (Dawson Creek, BC).** A lease operator photographs a wellhead, flange, gauge or stain on a phone. Before they leave the pad, SiteSense returns a severity-rated finding, safety-first actions (including H2S cues) and a ready-to-file work order.
@@ -7,10 +32,6 @@ Multimodal agentic field assistant for the **Meta Global AI Developer Hackathon*
 Uses the Meta Model API:
 - **SAM 3.1**: object segmentation
 - **Muse Spark 1.3**: structured diagnosis + tool-calling agent loop
-
-| 1 · Satellite | 2 · Drone | 3 · Ground |
-|---|---|---|
-| ![Satellite tab](docs/screenshot_1_satellite.png) | ![Drone tab](docs/screenshot_2_drone.png) | ![Ground tab](docs/screenshot_3_ground.png) |
 
 ## Three-level inspection: Satellite → Drone → Ground
 1. **Satellite** (free Sentinel-2, 10 m): screen a whole area for *areas of interest*: new clearings or lease changes, vegetation stress along a right-of-way (NDVI before/after), dark patches. It's cheap and wide, but can't see components or gas.
