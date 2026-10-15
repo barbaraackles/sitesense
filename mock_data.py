@@ -163,11 +163,12 @@ KEYWORDS = [
 ]
 
 
-def _pick(image_data_url: str, hint: str) -> str:
-    h = (hint or "").lower()
-    for key, words in KEYWORDS:
-        if any(w in h for w in words):
-            return key
+def _pick(image_data_url: str, *hints: str) -> str:
+    for h in hints:  # earlier hints (e.g. filename) win over later ones (notes)
+        h = (h or "").lower()
+        for key, words in KEYWORDS:
+            if any(w in h for w in words):
+                return key
     digest = hashlib.sha256((image_data_url or "").encode()).digest()
     return list(SCENARIOS)[digest[0] % len(SCENARIOS)]
 
@@ -178,7 +179,7 @@ def mock_segment(prompt: str = "object") -> dict:
 
 
 def mock_diagnose(image_data_url: str, user_note: str = "", domain: str = "", hint: str = "") -> dict:
-    key = _pick(image_data_url, f"{hint} {user_note}")
+    key = _pick(image_data_url, hint, user_note)
     d = copy.deepcopy(SCENARIOS[key])
     if not any(k in (domain or "").lower() for k in ("oil", "gas", "wellsite", "pipeline")):
         for k in OIL_GAS_EXTRA_KEYS:
@@ -186,9 +187,16 @@ def mock_diagnose(image_data_url: str, user_note: str = "", domain: str = "", hi
     return d
 
 
+def _title(text: str, limit: int = 70) -> str:
+    t = text.split(";")[0].split(":")[0].strip().rstrip(".")
+    if len(t) > limit:
+        t = t[:limit].rsplit(" ", 1)[0] + "..."
+    return t
+
+
 def mock_work_order(diagnosis: dict) -> dict:
     return {
-        "title": diagnosis.get("work_order_draft", "Field inspection follow-up")[:80],
+        "title": _title(diagnosis.get("work_order_draft") or "Field inspection follow-up"),
         "priority": diagnosis.get("severity", "Medium"),
         "description": diagnosis.get("issue_summary", ""),
         "immediate_actions": list(diagnosis.get("immediate_actions", [])),

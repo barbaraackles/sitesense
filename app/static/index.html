@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SiteSense - Field Inspection</title>
+<style>
+:root{--bg:#121417;--panel:#1c2026;--line:#2c323b;--txt:#e8eaed;--mut:#9aa3ad;--hv:#ff6a00}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:3px solid var(--hv);background:repeating-linear-gradient(135deg,#1a1d22 0 14px,#16191d 14px 28px)}
+.logo{width:30px;height:30px;border:3px solid var(--hv);transform:rotate(45deg);display:grid;place-items:center}
+.logo b{transform:rotate(-45deg);color:var(--hv);font-size:14px}
+h1{font-size:19px;margin:0;letter-spacing:.06em;text-transform:uppercase}h1 span{color:var(--hv)}
+.tag{margin-left:auto;font-size:11px;color:#111;background:var(--hv);padding:3px 8px;border-radius:3px;font-weight:800}
+main{max-width:760px;margin:0 auto;padding:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:10px 0 6px}
+select,textarea,input[type=file]{width:100%;background:#0f1114;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+textarea{min-height:70px}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--mut)}
+.drop img{max-width:100%;max-height:260px;border-radius:8px;display:block;margin:0 auto}
+.row{display:flex;gap:10px}.row>*{flex:1}
+button{width:100%;padding:14px;border:0;border-radius:8px;background:var(--hv);color:#111;font-weight:800;font-size:16px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+button.sec{background:transparent;color:var(--hv);border:2px solid var(--hv);font-size:13px;padding:10px}
+button:disabled{opacity:.5}
+.badge{display:inline-block;padding:6px 14px;border-radius:6px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.Low{background:#2e7d32}.Medium{background:#f9a825;color:#111}.High{background:#ff6a00;color:#111}.Critical{background:#d50000;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(213,0,0,.25)}}
+h2{font-size:13px;color:var(--hv);text-transform:uppercase;letter-spacing:.1em;margin:16px 0 6px}
+ul{margin:0;padding-left:20px}li{margin:3px 0}
+.safety{border-left:4px solid var(--hv);background:#2a1d12;padding:10px 12px;border-radius:6px}
+.chips span{display:inline-block;font-size:12px;border:1px solid var(--hv);color:var(--hv);border-radius:20px;padding:2px 10px;margin:2px}
+.meta{color:var(--mut);font-size:13px}.hidden{display:none}
+.mock{background:#332200;border:1px solid #f9a825;color:#f9d27a;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px}
+footer{text-align:center;color:var(--mut);font-size:12px;padding:20px}
+</style></head><body>
+<header><div class="logo"><b>S</b></div><h1>Site<span>Sense</span></h1><span class="tag">FIELD INSPECTION</span></header>
+<main>
+<div id="mockBanner" class="mock hidden">MOCK MODE: no Meta API key set, so these are canned demo responses.</div>
+<form id="f" class="card">
+  <label>Photo</label>
+  <div class="drop" id="drop"><span id="ph">Take a photo or choose an image</span><img id="preview" class="hidden" alt="preview"></div>
+  <input type="file" id="image" name="image" accept="image/*" capture="environment" style="margin-top:8px" required>
+  <div class="row">
+    <div><label for="domain">Domain</label>
+      <select id="domain" name="domain">
+        <option value="oil_gas" selected>Oil &amp; gas: wellsite / pipeline</option>
+        <option value="industrial">Industrial maintenance</option>
+        <option value="agriculture">Agriculture</option>
+        <option value="facilities">Facilities</option>
+      </select></div>
+  </div>
+  <label for="notes">Field notes</label>
+  <textarea id="notes" name="notes" placeholder="e.g. Stain under the flange at the separator inlet, noticed on morning rounds"></textarea>
+  <div style="height:12px"></div>
+  <button id="go" type="submit">Inspect</button>
+</form>
+
+<section id="out" class="card hidden">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span id="sev" class="badge">-</span><span id="conf" class="meta"></span><span id="asset" class="meta"></span>
+  </div>
+  <p id="summary" style="font-size:17px;font-weight:600;margin:12px 0 4px"></p>
+  <div id="flags" class="chips"></div>
+  <div id="gauge" class="meta"></div>
+  <h2>Safety</h2><div class="safety"><ul id="safety"></ul><div id="gas" class="meta" style="margin-top:6px"></div></div>
+  <h2>Findings</h2><ul id="obs"></ul>
+  <h2>Likely causes</h2><ul id="causes"></ul>
+  <h2>Immediate actions</h2><ul id="imm"></ul>
+  <h2>Work order</h2>
+  <div class="card" style="background:#0f1114;margin:0">
+    <div><b id="woTitle"></b> <span id="woPri" class="badge" style="font-size:11px;padding:2px 8px"></span></div>
+    <p id="woDesc" class="meta"></p><ul id="woNext"></ul>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <button class="sec" type="button" id="dlJson">Download work order (JSON)</button>
+    <button class="sec" type="button" id="dlHtml">PDF-ready HTML</button>
+  </div>
+  <p id="reg" class="meta" style="margin-top:12px"></p>
+</section>
+</main>
+<footer>AI-assisted draft. Not a substitute for gas detection, permits or qualified inspection.</footer>
+<script>
+const $=id=>document.getElementById(id);let last=null;
+fetch('/api/health').then(r=>r.json()).then(h=>{if(h.mock)$('mockBanner').classList.remove('hidden')});
+$('image').onchange=e=>{const f=e.target.files[0];if(!f)return;$('preview').src=URL.createObjectURL(f);$('preview').classList.remove('hidden');$('ph').classList.add('hidden')};
+const list=(id,a)=>{$(id).innerHTML='';(a||[]).forEach(t=>{const li=document.createElement('li');li.textContent=t;$(id).appendChild(li)})};
+function render(r){
+  last=r;const d=r.diagnosis,w=r.work_order;
+  $('out').classList.remove('hidden');
+  $('sev').textContent=d.severity;$('sev').className='badge '+d.severity;
+  $('conf').textContent='Confidence '+Math.round((d.confidence||0)*100)+'%';
+  $('asset').textContent=d.asset_type?('Asset: '+d.asset_type.replace(/_/g,' ')):'';
+  $('summary').textContent=d.issue_summary;
+  $('flags').innerHTML='';(d.hazard_flags||[]).forEach(f=>{const s=document.createElement('span');s.textContent=f.replace(/_/g,' ');$('flags').appendChild(s)});
+  $('gauge').textContent=d.gauge_reading&&d.gauge_reading!=='no gauge'?'Gauge: '+d.gauge_reading:'';
+  list('safety',d.safety_notes);
+  $('gas').textContent=d.requires_gas_detection?'Gas detection required: an image cannot confirm or rule out gas.':'';
+  list('obs',d.observed_conditions);list('causes',d.likely_causes);list('imm',d.immediate_actions);
+  $('woTitle').textContent=w.title;$('woPri').textContent=w.priority;$('woPri').className='badge '+w.priority;
+  $('woDesc').textContent=w.description;list('woNext',w.recommended_next_steps);
+  $('reg').textContent=d.regulatory_note||'';
+  $('out').scrollIntoView({behavior:'smooth'});
+}
+$('f').onsubmit=async e=>{e.preventDefault();$('go').disabled=true;$('go').textContent='Inspecting...';
+  try{const r=await fetch('/api/diagnose',{method:'POST',body:new FormData($('f'))});const j=await r.json();
+    if(!r.ok)throw new Error(j.error||j.detail||r.status);render(j)}catch(err){alert('Error: '+err.message)}
+  finally{$('go').disabled=false;$('go').textContent='Inspect'}};
+const save=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click()};
+$('dlJson').onclick=()=>last&&save(new Blob([JSON.stringify({...last.work_order,diagnosis:last.diagnosis,created_at:last.created_at},null,2)],{type:'application/json'}),'work_order.json');
+$('dlHtml').onclick=async()=>{if(!last)return;const r=await fetch('/api/work_order.html',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(last)});save(await r.blob(),'work_order.html')};
+</script></body></html>
