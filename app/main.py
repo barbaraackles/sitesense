@@ -217,3 +217,47 @@ td,th{{border:1px solid #ccc;padding:6px;vertical-align:top;text-align:left}}.s{
 <table><tr><th>#</th><th>Severity</th><th>Image</th><th>Finding / actions</th></tr>{rows}</table>
 <p style="color:#666">AI-assisted draft. Images cannot detect gas. Verify on site. Drone flights must follow
 Transport Canada rules and have the site operator's permission.</p></body></html>"""
+
+
+# --------------------------------------------------------------------------- reports
+import report  # noqa: E402
+from fastapi.responses import Response  # noqa: E402
+
+
+@app.post("/api/report")
+def api_report(payload: dict):
+    """Branded client report. type: community | operator; format: pdf (default) | png (map) | json.
+
+    community: optional name, lat, lng. operator: optional name, lat, lng, survey (from
+    /api/drone) and ground (from /api/diagnose); anything missing is filled with EXAMPLE data.
+    """
+    kind = payload.get("type", "community")
+    fmt = payload.get("format", "pdf")
+    if kind not in report.TYPES:
+        raise HTTPException(422, f"type must be one of {report.TYPES}")
+    if fmt not in ("pdf", "png", "json"):
+        raise HTTPException(422, "format must be pdf, png or json")
+    lat, lng = payload.get("lat"), payload.get("lng")
+    if (lat is None) != (lng is None):
+        raise HTTPException(422, "give both lat and lng, or neither")
+    if lat is not None and not (-90 <= float(lat) <= 90 and -180 <= float(lng) <= 180):
+        raise HTTPException(422, "lat must be in [-90, 90] and lng in [-180, 180]")
+    kw = {"name": str(payload.get("name") or "")[:120],
+          "lat": None if lat is None else float(lat), "lon": None if lng is None else float(lng)}
+    if kind == "operator":
+        kw["survey"] = payload.get("survey") or None
+        kw["ground"] = payload.get("ground") or None
+    try:
+        pdf, png, data = report.generate(kind, **kw)
+    except Exception as exc:
+        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=502)
+    stem = f"sitesense_{kind}_report" + ("_EXAMPLE" if data["example"] else "")
+    if fmt == "json":
+        return {"type": kind, "example": data["example"], "name": data["name"], "risk": data["risk"],
+                "treatments": data.get("treatments"), "pdf_bytes": len(pdf)}
+    if fmt == "png":
+        return Response(png, media_type="image/png",
+                        headers={"Content-Disposition": f'attachment; filename="{stem}_map.png"'})
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{stem}.pdf"',
+                             "X-SiteSense-Example": "1" if data["example"] else "0"})

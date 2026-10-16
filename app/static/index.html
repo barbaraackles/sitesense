@@ -57,6 +57,7 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:20px}
   <button data-tab="sat" class="on">1 · Satellite<small>flag areas</small></button>
   <button data-tab="drone">2 · Drone<small>survey batch</small></button>
   <button data-tab="ground">3 · Ground<small>close-up + WO</small></button>
+  <button data-tab="report">4 · Report<small>client PDF</small></button>
 </nav>
 
 <!-- ============ SATELLITE ============ -->
@@ -146,6 +147,19 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:20px}
     <p id="reg" class="meta" style="margin-top:12px"></p>
   </section>
 </section>
+
+<!-- ============ REPORT ============ -->
+<section id="tab-report" class="hidden">
+  <div class="card">
+    <h2>Report Generator</h2>
+    <p class="meta">Branded PDF + map image. <b>Community</b>: wildfire mapping for a BC town / regional district (UBCM CRI FireSmart or CWRP support). <b>Operator</b>: site inspection report using your drone survey and ground work order from tabs 2-3 (EXAMPLE data fills any gaps).</p>
+    <label>Report type <select id="repType"><option value="community">Community wildfire mapping</option><option value="operator">Operator site inspection</option></select></label>
+    <label>Client / site name <input id="repName" placeholder="e.g. District of ..."></label>
+    <div class="row"><label>Lat <input id="repLat" placeholder="blank = demo AOI"></label><label>Lng <input id="repLng" placeholder="blank = demo AOI"></label></div>
+    <div class="row" style="margin-top:12px"><button id="repPdf">Generate PDF report</button><button class="sec" id="repPng" type="button">Map image (PNG)</button></div>
+    <p id="repMsg" class="meta"></p>
+  </div>
+</section>
 </main>
 <footer>AI-assisted drafts. Images cannot detect gas. Not a substitute for gas detection, permits or qualified inspection.</footer>
 <script>
@@ -155,7 +169,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const list=(id,a)=>{$(id).innerHTML=(a||[]).map(t=>`<li>${esc(t)}</li>`).join('')};
 const save=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click()};
 function tab(t){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
-  ['sat','drone','ground'].forEach(x=>$('tab-'+x).classList.toggle('hidden',x!==t));window.scrollTo(0,0)}
+  ['sat','drone','ground','report'].forEach(x=>$('tab-'+x).classList.toggle('hidden',x!==t));window.scrollTo(0,0)}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 fetch('/api/health').then(r=>r.json()).then(h=>{if(h.mock)$('mockBanner').classList.remove('hidden')});
 
@@ -239,4 +253,15 @@ $('f').onsubmit=async e=>{e.preventDefault();const fd=new FormData($('f'));
   finally{$('go').disabled=false;$('go').textContent='Inspect'}};
 $('dlJson').onclick=()=>state.last&&save(new Blob([JSON.stringify({...state.last.work_order,diagnosis:state.last.diagnosis,created_at:state.last.created_at},null,2)],{type:'application/json'}),'work_order.json');
 $('dlHtml').onclick=async()=>{if(!state.last)return;const r=await fetch('/api/work_order.html',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state.last)});save(await r.blob(),'work_order.html')};
+
+async function genReport(format){const t=$('repType').value,body={type:t,format,name:$('repName').value};
+  const la=$('repLat').value.trim(),ln=$('repLng').value.trim();if(la&&ln){body.lat=+la;body.lng=+ln}
+  if(t==='operator'){if(state.survey)body.survey=state.survey;if(state.last)body.ground=state.last}
+  $('repMsg').textContent='Generating...';
+  try{const r=await fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){const j=await r.json();throw new Error(j.detail||j.error)}
+    const ex=r.headers.get('X-SiteSense-Example')==='1'||format==='png';
+    save(await r.blob(),`sitesense_${t}_report.${format}`);$('repMsg').textContent='Done.'+(ex&&format==='pdf'?' Contains EXAMPLE data (labelled in the PDF).':'')}
+  catch(e){$('repMsg').textContent='Error: '+e.message}}
+$('repPdf').onclick=()=>genReport('pdf');$('repPng').onclick=()=>genReport('png');
 </script></body></html>

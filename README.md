@@ -147,6 +147,21 @@ SiteSense borrows the data and the per-town risk logic of **Emberline** (a BC wi
 |---|---|---|
 | ![AOI badges](docs/screenshot_4_wildfire_aoi_badges.png) | ![Drone ranking](docs/screenshot_5_wildfire_drone_ranking.png) | ![FireSmart](docs/screenshot_6_wildfire_firesmart.png) |
 
+## Report Generator (client PDFs)
+
+`POST /api/report` and the **4 · Report** tab produce a branded PDF plus a map PNG (reportlab + Pillow, pure Python). It works fully in mock mode.
+
+- **Community wildfire mapping** (`"type": "community"`): for BC towns and regional districts, as supporting mapping for a UBCM CRI FireSmart application or a Community Wildfire Resiliency Plan. It includes the area of interest, a Sentinel-2 NDVI change map, a historical wildfire exposure rating, prioritized treatment areas, methods, data sources and licences (BC Wildfire Service data under the Open Government Licence – BC; modified Copernicus Sentinel data), and limitations. Points outside the bundled imagery get a fire-history map instead of NDVI.
+- **Operator site inspection** (`"type": "operator"`): ranked drone findings with photos, the ground inspection, the work order, a Lease FireSmart section and the wildfire history around the site. The UI sends your current drone survey and ground result; anything missing is filled with example data.
+
+```bash
+curl -X POST localhost:8000/api/report -H 'Content-Type: application/json' \
+  -d '{"type":"community","name":"District of Example","lat":55.95,"lng":-120.45}' -o report.pdf
+# "format": "png" returns the map image, "json" a summary
+```
+
+Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every page, and the maps and file names are marked too. The exposure figures are computed from real BCWS history, but they describe past fires, not a forecast. The report does not replace a qualified professional's assessment, so check the current UBCM program guide for what it requires. Samples: [`docs/samples/EXAMPLE_community_report.pdf`](docs/samples/EXAMPLE_community_report.pdf) and [`docs/samples/EXAMPLE_operator_report.pdf`](docs/samples/EXAMPLE_operator_report.pdf). Scope notes: [`docs/SCOPE_report_generator.md`](docs/SCOPE_report_generator.md).
+
 ## Demo flow
 1. SAM 3.1 segments the object of interest
 2. Muse Spark returns a structured JSON diagnosis (oil & gas prompt + schema when that domain is selected)
@@ -173,10 +188,11 @@ SiteSense borrows the data and the per-town risk logic of **Emberline** (a BC wi
 | `sitesense.py` | Core pipeline + CLI (original flow kept; lazy client; mock switch) |
 | `mock_data.py` | Canned corrosion / wellhead / gauge / spill scenarios |
 | `prompts/`, `schemas/` | General and oil & gas prompts and JSON schemas |
-| `app/` | FastAPI app + mobile page (Satellite / Drone / Ground tabs); `/api/satellite/demo`, `/api/drone`, `/api/drone/report.html`, `/api/diagnose`, `/api/work_order.html` |
+| `app/` | FastAPI app + mobile page (Satellite / Drone / Ground tabs); `/api/satellite/demo`, `/api/drone`, `/api/drone/report.html`, `/api/diagnose`, `/api/work_order.html`, `/api/report` |
 | `samples/` | Ground demo photos (public domain) |
 | `samples/satellite/` | Sentinel-2 clips, NDVI change, demo AOIs (`tools/fetch_sentinel.py`) |
 | `samples/drone/` | CC BY / CC BY-SA aerial stand-ins; drop your own drone photos here |
+| `report.py` | Report Generator: community wildfire mapping + operator inspection PDFs and map PNGs |
 | `tools/` | Data-fetch scripts |
 | `tests/` | pytest for the mock pipeline and API |
 
