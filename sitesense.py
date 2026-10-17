@@ -73,37 +73,81 @@ def segment_image(image_data_url: str, prompt: str = "pipe"):
     if is_mock():
         print("SAM segmentation complete (mock)")
         return mock_segment(prompt)
-    response = client.responses.create(
-        model=SEG_MODEL,
-        input=[{
-            "role": "user",
-            "content": [
-                {"type": "input_text",
-                 "text": ("Locate every instance of: " + prompt + ". "
-                          'Reply with ONLY this JSON: {"detections": '
-                          '[{"label": string, "box_2d": [ymin, xmin, ymax, xmax], '
-                          '"score": number}]} where box_2d uses 0-1000 coordinates. '
-                          "No other text.")},
-                {"type": "input_image", "image_url": image_data_url},
-            ],
-        }],
-    )
-    print("SAM segmentation complete")
-    raw = _responses_text(response)
-    detections = []
     try:
-        detections = json.loads(raw).get("detections", []) or []
-    except (json.JSONDecodeError, AttributeError):
+        response = client.responses.create(
+            model=SEG_MODEL,
+            input=[{
+                "role": "user",
+                "content": [
+                    {"type": "input_text",
+                     "text": ("Locate every instance of: " + prompt + ". "
+                              'Reply with ONLY this JSON: {"detections": '
+                              '[{"label": string, "box_2d": [ymin, xmin, ymax, xmax], '
+                              '"score": number}]} where box_2d uses 0-1000 coordinates. '
+                              "No other text.")},
+                    {"type": "input_image", "image_url": image_data_url},
+                ],
+            }],
+        )
+    except Exception as e:  # network/auth/model errors must not break the flow
+        print(f"SAM segmentation failed: {type(e).__name__}")
+        return {"mock": False, "label": prompt, "bbox": None, "mask": None,
+                "detections": [], "note": f"SAM 3.1 call failed: {type(e).__name__}: {str(e)[:200]}"}
+    print("SAM segmentation complete")
+    return parse_sam_output(_responses_text(response), prompt)
+
+
+def _extract_json(raw: str):
+    """Parse JSON even when wrapped in ```json fences or surrounded by prose."""
+    if not raw:
+        return None
+    t = raw.strip()
+    fence = re.search(r"```(?:json)?\s*(.*?)```", t, re.S)
+    if fence:
+        t = fence.group(1).strip()
+    try:
+        return json.loads(t)
+    except (json.JSONDecodeError, TypeError):
         pass
-    bbox = None
-    if detections:
-        y1, x1, y2, x2 = detections[0].get("box_2d", [None] * 4)
-        if None not in (x1, y1, x2, y2):
-            bbox = [x1 / 1000, y1 / 1000, x2 / 1000, y2 / 1000]
+    for open_c, close_c in (("{", "}"), ("[", "]")):
+        i, j = t.find(open_c), t.rfind(close_c)
+        if i != -1 and j > i:
+            try:
+                return json.loads(t[i:j + 1])
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
+def _to_bbox(det):
+    """box_2d [ymin, xmin, ymax, xmax] on 0-1000 -> [x1, y1, x2, y2] on 0-1."""
+    if not isinstance(det, dict):
+        return None
+    box = det.get("box_2d") or det.get("bbox") or det.get("box")
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return None
+    try:
+        y1, x1, y2, x2 = (float(v) for v in box)
+    except (TypeError, ValueError):
+        return None
+    scale = 1000.0 if max(x1, y1, x2, y2) > 1.0 else 1.0
+    return [x1 / scale, y1 / scale, x2 / scale, y2 / scale]
+
+
+def parse_sam_output(raw: str, prompt: str) -> dict:
+    """Turn SAM 3.1 text output into the mock-compatible segmentation dict. Never raises."""
+    data = _extract_json(raw)
+    if isinstance(data, list):
+        data = {"detections": data}
+    detections = data.get("detections", []) if isinstance(data, dict) else []
+    if not isinstance(detections, list):
+        detections = []
+    detections = [d for d in detections if isinstance(d, dict)]
+    bbox = next((b for b in (_to_bbox(d) for d in detections) if b), None)
     return {"mock": False, "label": prompt, "bbox": bbox, "mask": None,
             "detections": detections,
             "note": ("SAM 3.1 live" if bbox else
-                     "SAM 3.1 returned no parseable box; raw excerpt: " + raw[:300])}
+                     "SAM 3.1 returned no parseable box; raw excerpt: " + (raw or "")[:300])}
 
 DIAGNOSIS_SYSTEM = """You are SiteSense, an expert field diagnostic assistant for technicians, inspectors, and operators.
 
