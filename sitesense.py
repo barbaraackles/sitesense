@@ -47,24 +47,63 @@ def image_to_data_url(path: str) -> str:
     mime = mimetypes.guess_type(path)[0] or "image/jpeg"
     return f"data:{mime};base64,{b64}"
 
+def _responses_text(response) -> str:
+    """Pull plain text out of a Responses API result, tolerating shape drift."""
+    text = getattr(response, "output_text", None)
+    if text:
+        return text
+    parts = []
+    for item in getattr(response, "output", []) or []:
+        for c in getattr(item, "content", []) or []:
+            if getattr(c, "type", "") in ("output_text", "text"):
+                parts.append(getattr(c, "text", ""))
+    return "".join(parts)
+
+
 def segment_image(image_data_url: str, prompt: str = "pipe"):
-    # TODO: SAM 3.1 request/response shape on the Meta Model API is UNVERIFIED.
+    """SAM 3.1 on the Meta Model API (Responses API).
+
+    Asks for every instance of <prompt> as JSON bounding boxes and returns the
+    same shape as the mock so nothing downstream changes:
+    {"mock": False, "label", "bbox", "mask", "detections", "note"}.
+    Never raises: on any API/shape surprise it returns bbox=None with the raw
+    excerpt in "note", so the diagnose -> work-order flow keeps working.
+    Output contract to confirm with one live-key run of scripts/sam_probe.py.
+    """
     if is_mock():
         print("SAM segmentation complete (mock)")
         return mock_segment(prompt)
     response = client.responses.create(
         model=SEG_MODEL,
         input=[{
-            "type": "message",
             "role": "user",
             "content": [
-                {"type": "input_text", "text": prompt},
+                {"type": "input_text",
+                 "text": ("Locate every instance of: " + prompt + ". "
+                          'Reply with ONLY this JSON: {"detections": '
+                          '[{"label": string, "box_2d": [ymin, xmin, ymax, xmax], '
+                          '"score": number}]} where box_2d uses 0-1000 coordinates. '
+                          "No other text.")},
                 {"type": "input_image", "image_url": image_data_url},
             ],
         }],
     )
     print("SAM segmentation complete")
-    return response
+    raw = _responses_text(response)
+    detections = []
+    try:
+        detections = json.loads(raw).get("detections", []) or []
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    bbox = None
+    if detections:
+        y1, x1, y2, x2 = detections[0].get("box_2d", [None] * 4)
+        if None not in (x1, y1, x2, y2):
+            bbox = [x1 / 1000, y1 / 1000, x2 / 1000, y2 / 1000]
+    return {"mock": False, "label": prompt, "bbox": bbox, "mask": None,
+            "detections": detections,
+            "note": ("SAM 3.1 live" if bbox else
+                     "SAM 3.1 returned no parseable box; raw excerpt: " + raw[:300])}
 
 DIAGNOSIS_SYSTEM = """You are SiteSense, an expert field diagnostic assistant for technicians, inspectors, and operators.
 
