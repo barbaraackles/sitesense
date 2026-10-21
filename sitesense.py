@@ -80,11 +80,7 @@ def segment_image(image_data_url: str, prompt: str = "pipe"):
                 "role": "user",
                 "content": [
                     {"type": "input_text",
-                     "text": ("Locate every instance of: " + prompt + ". "
-                              'Reply with ONLY this JSON: {"detections": '
-                              '[{"label": string, "box_2d": [ymin, xmin, ymax, xmax], '
-                              '"score": number}]} where box_2d uses 0-1000 coordinates. '
-                              "No other text.")},
+                     "text": prompt},
                     {"type": "input_image", "image_url": image_data_url},
                 ],
             }],
@@ -135,7 +131,29 @@ def _to_bbox(det):
 
 
 def parse_sam_output(raw: str, prompt: str) -> dict:
-    """Turn SAM 3.1 text output into the mock-compatible segmentation dict. Never raises."""
+    """Turn SAM 3.1 text output into the mock-compatible segmentation dict. Never raises.
+
+    Live contract (verified 2026-10-20): SAM 3.1 answers a bare concept phrase
+    (e.g. "pipe") with native segments in the text —
+    <|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..|><|mask;...|> per instance, where
+    box coords are pixels of the w x h processed image. It returns EMPTY text
+    for instruction-style or abstract prompts ("rust", "stain", sentences).
+    """
+    native = re.findall(
+        r"<\|box;x1=(\d+);y1=(\d+);x2=(\d+);y2=(\d+);w=(\d+);h=(\d+)\|>", raw or "")
+    if native:
+        detections = []
+        for x1, y1, x2, y2, w, h in native:
+            x1, y1, x2, y2, w, h = (int(v) for v in (x1, y1, x2, y2, w, h))
+            detections.append({
+                "label": prompt,
+                "box_2d": [round(y1 / h * 1000), round(x1 / w * 1000),
+                           round(y2 / h * 1000), round(x2 / w * 1000)],
+                "score": None})
+        bbox = _to_bbox(detections[0]) if detections else None
+        return {"mock": False, "label": prompt, "bbox": bbox, "mask": None,
+                "detections": detections,
+                "note": f"SAM 3.1 live: {len(detections)} instance(s), native box+mask format"}
     data = _extract_json(raw)
     if isinstance(data, list):
         data = {"detections": data}
@@ -276,7 +294,10 @@ def create_work_order(diagnosis: dict) -> dict:
             {"role": "user", "content": f"Here is the SiteSense diagnosis JSON:\n{json.dumps(diagnosis, indent=2)}\n\nPlease create a finalized work order."},
         ],
         tools=tools,
-        tool_choice={"type": "function", "function": {"name": "create_work_order"}},
+        # Meta Model API accepts only tool_choice="auto" (named-function choice
+        # returns HTTP 400, verified live 2026-10-20); the system prompt names
+        # the tool, and "auto" also works on OpenAI-compatible endpoints.
+        tool_choice="auto",
     )
     tool_call = response.choices[0].message.tool_calls[0]
     return json.loads(tool_call.function.arguments)
