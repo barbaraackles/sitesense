@@ -6,3 +6,9 @@ __pycache__/
 *.png
 !samples/**
 !docs/**
+
+# Local-only / private — never push (added Oct 20, 2026)
+.venv-sat/
+samples/satellite/sites/sweetwater/
+samples/satellite/sites/extra_sites.json
+samples/satellite/sites.json
