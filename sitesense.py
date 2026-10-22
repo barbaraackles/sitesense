@@ -12,7 +12,10 @@ import firerisk  # noqa: E402  Emberline wildfire layer
 MODEL_API_BASE_URL = os.environ.get("MODEL_API_BASE_URL", "https://api.meta.ai/v1")
 # NOTE: confirm exact model IDs and endpoint shapes on https://dev.meta.ai
 SEG_MODEL = os.environ.get("SITESENSE_SEG_MODEL", "sam-3.1")
-LLM_MODEL = os.environ.get("SITESENSE_LLM_MODEL", "muse-spark-1.3")
+# Diagnosis brain: Muse Wonder by default (Barbara's call, Oct 21 2026, after the
+# live A/B test — Wonder 0.78/0.72 confidence vs Spark 0.6/0.82, stronger safety
+# reasoning). Set SITESENSE_LLM_MODEL=muse-spark-1.3 to fall back to Spark triage.
+LLM_MODEL = os.environ.get("SITESENSE_LLM_MODEL", "muse-wonder-1.0")
 
 
 def is_mock() -> bool:

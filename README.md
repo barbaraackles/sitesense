@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/hero.png" alt="SiteSense satellite screening tab near Dawson Creek, BC" width="360"></p>
 
-**SiteSense is a multimodal field assistant for oil and gas wellsite and pipeline inspection in BC's Peace Region, built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).** It works top-down: free Sentinel-2 satellite imagery flags areas of interest, a drone survey ranks the photos worst-first, and a phone close-up goes through **SAM 3.1** segmentation and **Muse Spark 1.3** diagnosis to produce a severity-rated, tool-called work order that links back to its origin. Every work order is safety-first: images never "detect gas", H2S cues are flagged, and a wildfire layer built from a decade of BC Wildfire Service data adds fire risk and Lease FireSmart checks.
+**SiteSense is a multimodal field assistant for oil and gas wellsite and pipeline inspection in BC's Peace Region, built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).** It works top-down: free Sentinel-2 satellite imagery flags areas of interest, a drone survey ranks the photos worst-first, and a phone close-up goes through **SAM 3.1** segmentation and **Muse Wonder** diagnosis to produce a severity-rated, tool-called work order that links back to its origin. Every work order is safety-first: images never "detect gas", H2S cues are flagged, and a wildfire layer built from a decade of BC Wildfire Service data adds fire risk and Lease FireSmart checks.
 
 **Built by** Barbara Ackles (Dawson Creek, BC), who also built [Emberline](https://github.com/barbaraackles/emberline), the BC wildfire hotspot and FireSmart planner that SiteSense's [wildfire layer](#emberline-wildfire-layer) comes from.
 
@@ -31,7 +31,7 @@ Multimodal agentic field assistant for the **Meta Global AI Developer Hackathon*
 
 Uses the Meta Model API:
 - **SAM 3.1**: object segmentation
-- **Muse Spark 1.3**: structured diagnosis + tool-calling agent loop
+- **Muse Wonder**: structured diagnosis + tool-calling agent loop
 
 ## Three-level inspection: Satellite → Drone → Ground
 1. **Satellite** (free Sentinel-2, 10 m): screen a whole area for *areas of interest*: new clearings or lease changes, vegetation stress along a right-of-way (NDVI before/after), dark patches. It's cheap and wide, but can't see components or gas.
@@ -43,7 +43,7 @@ flowchart LR
   S[Satellite<br/>Sentinel-2 true colour + NDVI change] -->|AOIs, prioritised| D[Drone survey<br/>batch upload, ranked worst-first]
   S -.->|seasonal / explained| X[Close AOI]
   D -->|combined report<br/>JSON + HTML| R[(Survey report)]
-  D -->|needs close-up| G[Ground photo<br/>SAM 3.1 + Muse Spark]
+  D -->|needs close-up| G[Ground photo<br/>SAM 3.1 + Muse Wonder]
   G -->|create_work_order tool| W[Work order<br/>origin: AOI → drone image]
 ```
 
@@ -96,7 +96,7 @@ Open the page on your phone (same Wi-Fi, `--host 0.0.0.0`) to use the camera dir
 export MODEL_API_KEY="..."                         # from dev.meta.ai
 export MODEL_API_BASE_URL="https://api.meta.ai/v1" # default; confirm on dev.meta.ai
 # optional overrides if the model IDs differ:
-export SITESENSE_SEG_MODEL="sam-3.1" SITESENSE_LLM_MODEL="muse-spark-1.3"
+export SITESENSE_SEG_MODEL="sam-3.1" SITESENSE_LLM_MODEL="muse-wonder-1.0"
 uvicorn app.main:app --port 8000
 ```
 
@@ -164,7 +164,7 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
 
 ## Demo flow
 1. SAM 3.1 segments the object of interest
-2. Muse Spark returns a structured JSON diagnosis (oil & gas prompt + schema when that domain is selected)
+2. Muse Wonder returns a structured JSON diagnosis (oil & gas prompt + schema when that domain is selected)
 3. Second agent call finalizes a work order via tool calling
 4. The web UI shows a severity badge, findings, safety notes and the work order, and offers it as JSON or printable (PDF-ready) HTML
 5. Upstream of this, the satellite screening and drone batch survey choose *where* the ground photo gets taken (see the three-level section)
@@ -175,7 +175,7 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
                                                       │
                      ┌────────────────────────────────┼─────────────────────────────┐
                      ▼                                ▼                             ▼
-          segment_image()  SAM 3.1         diagnose()  Muse Spark 1.3      create_work_order()
+          segment_image()  SAM 3.1         diagnose()  Muse Wonder      create_work_order()
           (object mask/box)                prompts/oil_gas_system.txt      tool call: create_work_order
                                            schemas/oil_gas_diagnosis.json  
                      └──────────── MOCK mode (mock_data.py) when no key ───────────┘
@@ -198,12 +198,12 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
 
 ## Hackathon fit
 - Theme: “Build for Your World” + “Push the Frontier”
-- Uses Muse Spark 1.3 + SAM 3.1
+- Uses Muse Wonder + SAM 3.1
 - $150 Meta Model API credits for accepted participants
 
 ### Judging-criteria checklist
 - [x] **Real-world impact**: local, specific problem (Peace Region wellsite/pipeline inspection)
-- [x] **Use of Meta models**: SAM 3.1 segmentation + Muse Spark structured output + tool calling
+- [x] **Use of Meta models**: SAM 3.1 segmentation + Muse Wonder structured output + tool calling
 - [x] **Agentic behaviour**: multi-step pipeline ending in a tool-generated work order
 - [x] **Frontier / multi-scale**: Satellite → Drone → Ground escalation with traceable work orders
 - [x] **Working demo**: mobile web app, runs without a key (mock), tests pass
@@ -214,7 +214,7 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
 
 ## Known assumptions
 - The SAM 3.1 call (`client.responses.create`) and its response shape are **unverified**. Confirm them on dev.meta.ai.
-- It assumes an OpenAI-compatible Muse Spark endpoint that supports `response_format` `json_schema` and `tools`.
-- Model IDs `sam-3.1` / `muse-spark-1.3` are placeholders until confirmed.
-- Satellite and drone real-mode calls assume Muse Spark accepts multiple images per message and `json_schema` output. The satellite schema uses a nullable `["number","null"]` type, which some strict-mode implementations may reject.
+- It assumes an OpenAI-compatible Muse endpoint that supports `response_format` `json_schema` and `tools`.
+- Model IDs confirmed live: `sam-3.1` (segmentation) + `muse-wonder-1.0` (diagnosis/work orders, Meta Model API). Diagnosis default switched from muse-spark-1.3 to Muse Wonder on Oct 21, 2026 after a live A/B test; Spark remains available via SITESENSE_LLM_MODEL as the fallback tier.
+- Satellite and drone real-mode calls assume the Muse endpoint accepts multiple images per message and `json_schema` output. The satellite schema uses a nullable `["number","null"]` type, which some strict-mode implementations may reject.
 - Bundled drone images are aerial stand-ins (mostly from crewed aircraft, some outside BC) until Barbara's own drone photos replace them.

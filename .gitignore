@@ -12,3 +12,6 @@ __pycache__/
 samples/satellite/sites/sweetwater/
 samples/satellite/sites/extra_sites.json
 samples/satellite/sites.json
+
+# Sealed Oct 21, 2026: the whole private sites tree stays local
+samples/satellite/sites/
