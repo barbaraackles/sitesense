@@ -71,7 +71,7 @@ def segment_image(image_data_url: str, prompt: str = "pipe"):
     {"mock": False, "label", "bbox", "mask", "detections", "note"}.
     Never raises: on any API/shape surprise it returns bbox=None with the raw
     excerpt in "note", so the diagnose -> work-order flow keeps working.
-    Output contract to confirm with one live-key run of scripts/sam_probe.py.
+    Output contract verified live (scripts/sam_probe.py); live responses give boxes, mask is None.
     """
     if is_mock():
         print("SAM segmentation complete (mock)")

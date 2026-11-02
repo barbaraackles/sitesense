@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/hero.png" alt="SiteSense satellite screening tab near Dawson Creek, BC" width="360"></p>
 
-**SiteSense is a multimodal field assistant for oil and gas wellsite and pipeline inspection in BC's Peace Region, built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).** It works top-down: free Sentinel-2 satellite imagery flags areas of interest, a drone survey ranks the photos worst-first, and a phone close-up goes through **SAM 3.1** segmentation and **Muse Wonder** diagnosis to produce a severity-rated, tool-called work order that links back to its origin. Every work order is safety-first: images never "detect gas", H2S cues are flagged, and a wildfire layer built from a decade of BC Wildfire Service data adds fire risk and Lease FireSmart checks.
+**SiteSense is a multimodal field assistant for oil and gas wellsite and pipeline inspection in BC's Peace Region, built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).** It works top-down: free Sentinel-2 satellite imagery flags areas of interest, a drone survey ranks the photos worst-first, and a phone close-up goes through **SAM 3.1** part detection and **Muse Wonder** diagnosis to produce a severity-rated, tool-called work order that links back to its origin. Every work order is safety-first: images never "detect gas", H2S cues are flagged, and a wildfire layer built from a decade of BC Wildfire Service data adds fire risk and Lease FireSmart checks.
 
 **Built by** Barbara Ackles (Dawson Creek, BC), who also built [Emberline](https://github.com/barbaraackles/emberline), the BC wildfire hotspot and FireSmart planner that SiteSense's [wildfire layer](#emberline-wildfire-layer) comes from.
 
@@ -25,12 +25,10 @@ SITESENSE_MOCK=1 uvicorn app.main:app --port 8000
 Run the tests with `pip install -r requirements-dev.txt && pytest`. For real mode, set `MODEL_API_KEY` (see [Quick start](#quick-start)).
 
 ## Overview
-Multimodal agentic field assistant for the **Meta Global AI Developer Hackathon** (Oct 26–Nov 4, 2026).
-
 **Focus: oil & gas wellsite and pipeline inspection in the Peace Region (Dawson Creek, BC).** A lease operator photographs a wellhead, flange, gauge or stain on a phone. Before they leave the pad, SiteSense returns a severity-rated finding, safety-first actions (including H2S cues) and a ready-to-file work order.
 
 Uses the Meta Model API:
-- **SAM 3.1**: object segmentation
+- **SAM 3.1**: finds and boxes the part of interest (bounding boxes)
 - **Muse Wonder**: structured diagnosis + tool-calling agent loop
 
 ## Three-level inspection: Satellite → Drone → Ground
@@ -80,7 +78,7 @@ Oil & gas mode (default in the web demo) also looks at leaks/stains, corrosion a
    ```bash
    python sitesense.py
    ```
-   (Update `IMAGE_PATH` inside the script first, or pass a path: `python sitesense.py samples/wellhead.jpg`.)
+   (Pass an image path, e.g. `python sitesense.py samples/wellhead.jpg`; with no argument it uses a bundled sample.)
 
 ### No key yet? Mock mode
 If `MODEL_API_KEY` is unset (or `SITESENSE_MOCK=1`), SiteSense returns realistic canned diagnoses, so the whole demo runs end to end:
@@ -124,7 +122,7 @@ pytest -q
 
 SiteSense borrows the data and the per-town risk logic of **Emberline** (a BC wildfire hotspot and FireSmart planner) so every lease, AOI and work order knows its wildfire history. This matters in the Peace Region because the biggest BC fires of the decade burned through oil and gas country: Donnie Creek (2023, ~619,000 ha) and Nogah Creek (2024, ~508,000 ha).
 
-- **Data:** `data/bc_fires.geojson` (~1 MB) holds 4,535 BC fire origin points (≥ 1 ha) and 558 ignition hotspot cells, covering 2015–2025. The source is BC Wildfire Service *Historical Fire Incident Locations*, under the Open Government Licence – BC (credit in `samples/CREDITS.md`). To regenerate it, run `python tools/export_emberline.py <emberline>/src/data/catalog.json`.
+- **Data:** `data/bc_fires.geojson` (~1 MB) holds 4,535 mapped BC fire origin points (fires of ≥ 1 ha only, out of about 30,750 total recorded incidents) and 558 ignition hotspot cells, covering 2015–2025. The source is BC Wildfire Service *Historical Fire Incident Locations*, under the Open Government Licence – BC (credit in `samples/CREDITS.md`). To regenerate it, run `python tools/export_emberline.py <emberline>/src/data/catalog.json`.
 - **Risk module and API:** `firerisk.py` and `GET /api/risk?lat=55.76&lng=-120.24` return:
   - fires and hectares within 10/25/50 km
   - the human/lightning/unknown cause mix within 25 km
@@ -163,7 +161,7 @@ curl -X POST localhost:8000/api/report -H 'Content-Type: application/json' \
 Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every page, and the maps and file names are marked too. The exposure figures are computed from real BCWS history, but they describe past fires, not a forecast. The report does not replace a qualified professional's assessment, so check the current UBCM program guide for what it requires. Samples: [`docs/samples/EXAMPLE_community_report.pdf`](docs/samples/EXAMPLE_community_report.pdf) and [`docs/samples/EXAMPLE_operator_report.pdf`](docs/samples/EXAMPLE_operator_report.pdf). Scope notes: [`docs/SCOPE_report_generator.md`](docs/SCOPE_report_generator.md).
 
 ## Demo flow
-1. SAM 3.1 segments the object of interest
+1. SAM 3.1 detects the object of interest and returns its bounding box
 2. Muse Wonder returns a structured JSON diagnosis (oil & gas prompt + schema when that domain is selected)
 3. Second agent call finalizes a work order via tool calling
 4. The web UI shows a severity badge, findings, safety notes and the work order, and offers it as JSON or printable (PDF-ready) HTML
@@ -176,7 +174,7 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
                      ┌────────────────────────────────┼─────────────────────────────┐
                      ▼                                ▼                             ▼
           segment_image()  SAM 3.1         diagnose()  Muse Wonder      create_work_order()
-          (object mask/box)                prompts/oil_gas_system.txt      tool call: create_work_order
+          (detection box)                  prompts/oil_gas_system.txt      tool call: create_work_order
                                            schemas/oil_gas_diagnosis.json  
                      └──────────── MOCK mode (mock_data.py) when no key ───────────┘
                                                       │
@@ -199,22 +197,21 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
 ## Hackathon fit
 - Theme: “Build for Your World” + “Push the Frontier”
 - Uses Muse Wonder + SAM 3.1
-- $150 Meta Model API credits for accepted participants
 
 ### Judging-criteria checklist
 - [x] **Real-world impact**: local, specific problem (Peace Region wellsite/pipeline inspection)
-- [x] **Use of Meta models**: SAM 3.1 segmentation + Muse Wonder structured output + tool calling
+- [x] **Use of Meta models**: SAM 3.1 detection + Muse Wonder structured output + tool calling
 - [x] **Agentic behaviour**: multi-step pipeline ending in a tool-generated work order
 - [x] **Frontier / multi-scale**: Satellite → Drone → Ground escalation with traceable work orders
 - [x] **Working demo**: mobile web app, runs without a key (mock), tests pass
 - [x] **Responsible AI**: never claims gas detection, reads only legible gauges, no invented part or regulation numbers, human sign-off on work orders
-- [ ] **Live run on Meta Model API**: pending API key (verify endpoint shapes)
-- [ ] **Demo video** (2–3 min: phone on a real lease → work order)
+- [x] **Live run on Meta Model API**: verified live Oct 20, 2026 (commit 6391019)
+- [x] **Demo video** (2–3 min: phone on a real lease → work order): recorded (link to be added)
 - [ ] **Offline/low-signal story** (queue photos, sync later)
 
 ## Known assumptions
-- The SAM 3.1 call (`client.responses.create`) and its response shape are **unverified**. Confirm them on dev.meta.ai.
-- It assumes an OpenAI-compatible Muse endpoint that supports `response_format` `json_schema` and `tools`.
-- Model IDs confirmed live: `sam-3.1` (segmentation) + `muse-wonder-1.0` (diagnosis/work orders, Meta Model API). Diagnosis default switched from muse-spark-1.3 to Muse Wonder on Oct 21, 2026 after a live A/B test; Spark remains available via SITESENSE_LLM_MODEL as the fallback tier.
-- Satellite and drone real-mode calls assume the Muse endpoint accepts multiple images per message and `json_schema` output. The satellite schema uses a nullable `["number","null"]` type, which some strict-mode implementations may reject.
+- The SAM 3.1 call (`client.responses.create`) and its response format were **verified live** on the Meta Model API (Oct 20, 2026, commit 6391019; parser hardening in ac4e9b3). The live response gives bounding boxes; `mask` is `None`.
+- Muse runs through the OpenAI-compatible endpoint with `response_format` `json_schema` and `tools`.
+- Model IDs confirmed live (the defaults in `sitesense.py`): `sam-3.1` (detection) + `muse-wonder-1.0` (diagnosis/work orders, Meta Model API). Diagnosis default switched from muse-spark-1.3 to Muse Wonder on Oct 21, 2026 after a live A/B test; Spark remains available via SITESENSE_LLM_MODEL as the fallback tier.
+- Satellite and drone real-mode calls have **not been verified live yet**; only mock mode has been tested. They need the Muse endpoint to accept multiple images per message and `json_schema` output. The satellite schema uses a nullable `["number","null"]` type, which some strict-mode implementations may reject.
 - Bundled drone images are aerial stand-ins (mostly from crewed aircraft, some outside BC) until Barbara's own drone photos replace them.
