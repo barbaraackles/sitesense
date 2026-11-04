@@ -208,7 +208,7 @@ Mock/demo content is stamped **EXAMPLE DATA – NOT FOR SUBMISSION** on every pa
 - [x] **Frontier / multi-scale**: Satellite → Drone → Ground escalation with traceable work orders
 - [x] **Working demo**: mobile web app, runs without a key (mock), tests pass
 - [x] **Responsible AI**: never claims gas detection, reads only legible gauges, no invented part or regulation numbers, human sign-off on work orders
-- [ ] **Live run on Meta Model API**: pending API key (verify endpoint shapes)
+- [x] **Live run on Meta Model API**: SAM 3.1 + Muse Wonder verified (bill Nov 2); mock path remains for keyless judges
 - [ ] **Demo video** (2–3 min: phone on a real lease → work order)
 - [ ] **Offline/low-signal story** (queue photos, sync later)
 
